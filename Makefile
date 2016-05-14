@@ -2,7 +2,7 @@ DIR=$(shell pwd)
 
 CC=gcc
 CFLAGS=
-COMMON_OBJS=
+COMMON_OBJS=common.o
 OBJS=
 EXE=pep7
 
