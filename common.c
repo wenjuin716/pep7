@@ -1,5 +1,7 @@
 #include "common.h"
 
+
+/******** Common debug function *********/
 void hexdump(void *mem, unsigned int len)
 {
         unsigned int i, j;

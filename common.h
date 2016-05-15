@@ -5,4 +5,5 @@
 #define HEXDUMP_COLS 8
 #endif
 
+/******** Common debug function *********/
 void hexdump(void *mem, unsigned int len);

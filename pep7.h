@@ -22,18 +22,6 @@
 #define REG_A	0	// accumulator register index
 #define REG_X	1	// index register index
 
-/*********** Instruction method table  ***********/
-/* you can use it to enhance the code readable */
-typedef enum opcode_type{
-  STOP=0,
-  LOAD=1,
-  STORE=2,
-  ADD=3,
-  SUB=4,
-  CHAR_IN=27,
-  CHAR_OUT=28,	
-} opcode_type;
-
 /*********** Memory ***********/
 //#define MEM_SIZE	4096
 #define MEM_SIZE	32	// In byte, total 2^6
@@ -62,17 +50,19 @@ typedef enum opcode_type{
  *			  In Direct-mode addressing, the operand of register as data pointer which poiter to memory.
  */
 
+#define INST_SPEC_SIZE	1	//byte
+#define OPER_SPEC_SIZE	2	//byte
+#define INST_REG_SIZE (INST_SPEC_SIZE + OPER_SPEC_SIZE)	//byte
+
 union ir_inst_spec {
-  uint16_t inst_s;
+  uint8_t inst_s;
 
   struct {
-    unsigned char unused:8;	//unused
-    unsigned char opcode:5;	//operation code
-    unsigned char R:1;		//register specifier
     unsigned char addr_mode:2;	//addressing-mode specifier
+    unsigned char R:1;		//register specifier
+    unsigned char opcode:5;	//operation code
   } r;
 };
-
 
 /*
  *	the operation specifier is depends on "addressing-mode specifier" of instruction specifier
@@ -83,10 +73,29 @@ union ir_op_spec {
 };
 
 typedef struct inst_reg{
-  union ir_inst_spec is;
   union ir_op_spec op;
+  union ir_inst_spec is;
 } inst_reg;
- 
+
+/*********** operation code ***********/
+/* you can use it to enhance the code readable */
+#define REG_SPEC_OFFSET	2
+#define OPCODE_OFFSET	3
+
+#define ADDRMODE_MASK	((1<<2)-1)
+#define REG_SPEC_MASK	((1<<1)-1)<<REG_SPEC_OFFSET
+#define OPCODE_MASK	((1<<5)-1)<<OPCODE_OFFSET
+
+
+typedef enum opcode_type{
+  STOP=0,
+  LOAD=1,
+  STORE=2,
+  ADD=3,
+  SUB=4,
+  CHAR_IN=27,
+  CHAR_OUT=28,	
+} opcode_type;
 
 /*********** status bits ***********/
 /*	
@@ -100,11 +109,11 @@ typedef union stat_flags {
   uint8_t flags;
   
   struct {
-    unsigned char unused:4;
-    unsigned char regX_n:1;	//unknown, tmp define
-    unsigned char regX_z:1;	//unknown, tmp define
-    unsigned char regA_n:1;
     unsigned char regA_z:1;
+    unsigned char regA_n:1;
+    unsigned char regX_z:1;	//unknown, tmp define
+    unsigned char regX_n:1;	//unknown, tmp define
+    unsigned char unused:4;
   } f;
 } stat_flags;
 
