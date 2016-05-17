@@ -54,6 +54,9 @@
 #define OPER_SPEC_SIZE	2	//byte
 #define INST_REG_SIZE (INST_SPEC_SIZE + OPER_SPEC_SIZE)	//byte
 
+#define IMMEDIATE_MODE	0
+#define DIRECT_MODE	1
+
 union ir_inst_spec {
   uint8_t inst_s;
 

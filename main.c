@@ -74,15 +74,16 @@ void pep7_init(void){
     goto done;
   }
 
-#if 0
+#if 1
   memset(pep_mem_head, 0, MEM_SIZE);
-  memset(pep_mem_head, 0xFF, MEM_SIZE);	//all bit is "1"
+  //memset(pep_mem_head, 0xFF, MEM_SIZE);	//all bit is "1"
 #else
   int i=0;
   for(i=0; i<MEM_SIZE; i++){
-      memset(pep_mem_head+i, i+65, 1);
+      memset(pep_mem_head+i, i, 1);	//0~
+//      memset(pep_mem_head+i, i+65, 1);	//A-Z
   }
-  //hexdump(pep_mem_head, MEM_SIZE);
+  hexdump(pep_mem_head, MEM_SIZE);
 #endif
 #if DEBUG
   hexdump(pep_mem_head, MEM_SIZE);
@@ -151,8 +152,8 @@ void pep7_shutdown(void){
 
 void dumpRegInfo(void){
   printf("\n######## pep/7 dumpRegInfo ########\n");
-  printf("\tRegister A: %d\n", *pep7_reg[REG_A]);
-  printf("\tRegister X: %d\n", *pep7_reg[REG_X]);
+  printf("\tRegister A: %d\t(0x%x)\n", *pep7_reg[REG_A],*pep7_reg[REG_A]);
+  printf("\tRegister X: %d\t(0x%x)\n", *pep7_reg[REG_X],*pep7_reg[REG_X]);
   printf("\tpep7 stat:\n");
   printf("\t  regX_n: %d\n", pep7_stat.f.regX_n);
   printf("\t  regX_z: %d\n", pep7_stat.f.regX_z);
@@ -185,13 +186,17 @@ void dumpIntsRegInfo(inst_reg* ir){
 
   //check the addressing mode to dump the data.
   printf("Data:");
-  if(((ir->is).r.addr_mode) == 0)
-    hexdump(&(ir->op), 1);
-  else if(((ir->is).r.addr_mode) == 1)
-    hexdump(pep_mem_head+(ir->op.inst_operand), 1);
+  if(((ir->is).r.addr_mode) == IMMEDIATE_MODE)
+    hexdump(&(ir->op), OPER_SPEC_SIZE);
+  else if(((ir->is).r.addr_mode) == DIRECT_MODE)
+    hexdump(pep_mem_head+(ir->op.inst_operand), OPER_SPEC_SIZE);
 
   printf("################################\n");
   return;
+}
+
+void* getPep7Mem(uint16_t offset){
+  return (pep_mem_head+offset);
 }
 
 void excuteInst(inst_reg* ir){
@@ -204,34 +209,66 @@ void excuteInst(inst_reg* ir){
       break;
     case LOAD:
       printf("excute LOAD instruction.\n");
+      /* Load data to REG_A */
+      if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
+        setReg(REG_A, (uint16_t)(ir->op.inst_operand));
+      }else if(((ir->is).r.addr_mode) == DIRECT_MODE){
+        setReg(REG_A, *(uint16_t*)getPep7Mem(ir->op.inst_operand));
+      }
       break;
     case STORE:
       printf("excute STORE instruction.\n");
+      /* STORE REG_A data to operand */
+      if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
+        memcpy(&(ir->op.inst_operand), pep7_reg[REG_A], REG_SIZE);
+      }else if(((ir->is).r.addr_mode) == DIRECT_MODE){
+        memcpy((uint16_t*)getPep7Mem(ir->op.inst_operand), pep7_reg[REG_A], REG_SIZE);
+      }
       break;
     case ADD:
       printf("excute ADD instruction.\n");
+      /* ADD operand Data to register A */
+      if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
+        setReg(REG_A, (*pep7_reg[REG_A]+(uint16_t)(ir->op.inst_operand)));
+      }else if(((ir->is).r.addr_mode) == DIRECT_MODE){
+        setReg(REG_A, (*pep7_reg[REG_A]+*(uint16_t*)getPep7Mem(ir->op.inst_operand)));
+      }
       break;
     case SUB:
       printf("excute SUB instruction.\n");
+      /* SUB operand Data to register A */
+      if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
+        setReg(REG_A, (*pep7_reg[REG_A]-(uint16_t)(ir->op.inst_operand)));
+      }else if(((ir->is).r.addr_mode) == DIRECT_MODE){
+        setReg(REG_A, (*pep7_reg[REG_A]-*(uint16_t*)getPep7Mem(ir->op.inst_operand)));
+      }
       break;
     case CHAR_IN:
       printf("excute CHAR_IN instruction.\n");
+      if(((ir->is).r.addr_mode) != DIRECT_MODE){
+        printf("Error: wrong addressing mode[%d], it must be DIRECT_MODE.\n", ((ir->is).r.addr_mode));
+        break;
+      }
+
+      (*(char*)getPep7Mem(ir->op.inst_operand)) = getchar();
       break;
     case CHAR_OUT:
       printf("excute CHAR_OUT instruction.\n");
-      if(((ir->is).r.addr_mode) == 0)
+      if(((ir->is).r.addr_mode) == IMMEDIATE_MODE)
         putchar(0xFF & ((char)(ir->op.inst_operand)));
-      else if(((ir->is).r.addr_mode) == 1){
-        putchar(0xFF & *(char*)(pep_mem_head+(ir->op.inst_operand)));
+      else if(((ir->is).r.addr_mode) == DIRECT_MODE){
+        putchar(0xFF & *(char*)getPep7Mem(ir->op.inst_operand));
         //hexdump(pep_mem_head+(ir->op.inst_operand), 1);
       }
-
       break;
     default:
       printf("ERROR:unknown instruction.\n");
       break;
   }
 
+  hexdump(pep_mem_head, MEM_SIZE);
+  dumpRegInfo();
+  dumpIntsRegInfo(ir);
   return;
 }
 
@@ -240,14 +277,23 @@ void main(int argc, char** argv){
 
   pep7_init();
 
-#if 1	//instruction register debug
-  //int tmp=0xE00048;	//pass operand to stdout
-  int tmp=0xE10005;	//pass 5th pep7 memory byte(*operand) to stdout
-  //inst_reg* x = malloc(INST_REG_SIZE);
+#if 0	//instruction register debug
+  /* Unit test ok */
+  //int tmp=0x080201;	//LOAD
+  //int tmp=0x090003;	//LOAD
+  //int tmp=0x100012;	//STORE
+  //int tmp=0x110011;	//STORE
+  //int tmp=0x180123;	//ADD
+  //int tmp=0x190010;	//ADD
+  //int tmp=0x200123;	//SUB
+  //int tmp=0x210010;	//SUB
+  //int tmp=0xD90005;	//CHAR_IN:pass to 5th pep7 memory byte(*operand) from stdin
+  //int tmp=0xE10005;	//CHAR_OUT:pass 5th pep7 memory byte(*operand) to stdout
+  //int tmp=0xE00048;	//CHAR_OUT:pass operand to stdout
   
   memcpy(pep7_ir, &tmp, INST_REG_SIZE);
-  //dumpIntsRegInfo(pep7_ir);
 
+  //the instruction handler.
   excuteInst(pep7_ir);
 
   //free(x);
