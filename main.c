@@ -20,6 +20,8 @@
 #include <string.h>
 #include "pep7.h"
 
+#define PEP7_DEFAULT_FILE "PEP7_default"
+
 void* pep_mem_head=NULL;	//the memory head of pep/7's memory, and memory size should be "MEM_SIZE"
 /*
  *	reg[0]: accumulator register 
@@ -28,8 +30,10 @@ void* pep_mem_head=NULL;	//the memory head of pep/7's memory, and memory size sh
 int16_t* pep7_reg[2]={NULL, NULL};
 stat_flags pep7_stat;
 
-inst_reg* pep7_ir=NULL;
+uint16_t *progCounter=NULL;	//program counter, pointer to text segment of pep7 memory
+inst_reg* pep7_ir=NULL;		//current instruction register
 
+extern char *optarg;
 
 void setReg(int index, int16_t value){
   *((int16_t*)pep7_reg[index])=value;
@@ -205,10 +209,14 @@ void excuteInst(inst_reg* ir){
 
   switch((ir->is).r.opcode){
     case STOP:
-      printf("excute STOP instruction.\n");
+      //printf("excute STOP instruction.\n");
+
+      hexdump(pep_mem_head, MEM_SIZE);
+      dumpRegInfo();
+      dumpIntsRegInfo(ir);
       break;
     case LOAD:
-      printf("excute LOAD instruction.\n");
+      //printf("excute LOAD instruction.\n");
       /* Load data to REG_A */
       if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
         setReg(REG_A, (uint16_t)(ir->op.inst_operand));
@@ -217,7 +225,7 @@ void excuteInst(inst_reg* ir){
       }
       break;
     case STORE:
-      printf("excute STORE instruction.\n");
+      //printf("excute STORE instruction.\n");
       /* STORE REG_A data to operand */
       if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
         memcpy(&(ir->op.inst_operand), pep7_reg[REG_A], REG_SIZE);
@@ -226,7 +234,7 @@ void excuteInst(inst_reg* ir){
       }
       break;
     case ADD:
-      printf("excute ADD instruction.\n");
+      //printf("excute ADD instruction.\n");
       /* ADD operand Data to register A */
       if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
         setReg(REG_A, (*pep7_reg[REG_A]+(uint16_t)(ir->op.inst_operand)));
@@ -235,7 +243,7 @@ void excuteInst(inst_reg* ir){
       }
       break;
     case SUB:
-      printf("excute SUB instruction.\n");
+      //printf("excute SUB instruction.\n");
       /* SUB operand Data to register A */
       if(((ir->is).r.addr_mode) == IMMEDIATE_MODE){
         setReg(REG_A, (*pep7_reg[REG_A]-(uint16_t)(ir->op.inst_operand)));
@@ -244,7 +252,7 @@ void excuteInst(inst_reg* ir){
       }
       break;
     case CHAR_IN:
-      printf("excute CHAR_IN instruction.\n");
+      //printf("excute CHAR_IN instruction.\n");
       if(((ir->is).r.addr_mode) != DIRECT_MODE){
         printf("Error: wrong addressing mode[%d], it must be DIRECT_MODE.\n", ((ir->is).r.addr_mode));
         break;
@@ -253,12 +261,11 @@ void excuteInst(inst_reg* ir){
       (*(char*)getPep7Mem(ir->op.inst_operand)) = getchar();
       break;
     case CHAR_OUT:
-      printf("excute CHAR_OUT instruction.\n");
+      //printf("excute CHAR_OUT instruction.\n");
       if(((ir->is).r.addr_mode) == IMMEDIATE_MODE)
         putchar(0xFF & ((char)(ir->op.inst_operand)));
       else if(((ir->is).r.addr_mode) == DIRECT_MODE){
         putchar(0xFF & *(char*)getPep7Mem(ir->op.inst_operand));
-        //hexdump(pep_mem_head+(ir->op.inst_operand), 1);
       }
       break;
     default:
@@ -266,54 +273,134 @@ void excuteInst(inst_reg* ir){
       break;
   }
 
-  hexdump(pep_mem_head, MEM_SIZE);
-  dumpRegInfo();
-  dumpIntsRegInfo(ir);
   return;
 }
 
-void main(int argc, char** argv){
-  printf("welcome to pep/7 simulator\n");
+void usage(char *progName)
+{
+   printf("usage: %s [-h] [-f FileName] [-s]\n", progName);
+   printf("       h: dump the pep7 usage\n");
+   printf("       f: input instruction file\n");
+   printf("       s: run the default \"Hello\" case\n");
+}
 
+void main(int argc, char** argv){
+  FILE* prog_fp=NULL;	//use to read instruction file
+  char* pep7_file=NULL;
+  uint8_t flag = 1;
+
+#if 0
+  char buffer[INST_REG_SIZE*2]={0};
+#else
+  char buff_is[2]={0};
+  char buff_ip[4]={0};
+#endif
+  int32_t c;
+
+  while ((c = getopt(argc, argv, "hf:s")) != -1){
+    switch(c)
+    {
+      case 'h':
+        usage(argv[0]);
+        break;
+      case 'f':
+        pep7_file = malloc(strlen(optarg));
+        strncpy(pep7_file, optarg, strlen(optarg));
+        break;
+      case 's':
+        pep7_file = malloc(strlen(PEP7_DEFAULT_FILE));
+        strncpy(pep7_file, PEP7_DEFAULT_FILE, strlen(PEP7_DEFAULT_FILE));
+        break;
+      default:
+        usage(argv[0]);
+        break;
+    }
+  }
+
+  if(pep7_file == NULL){
+    printf("No instrucntion file, stop pep7.\n");
+    usage(argv[0]);
+    return;
+  }  
+
+  if((prog_fp=fopen(pep7_file, "r")) == NULL){
+    printf("ERROR: open \"%s\" fail.\n", pep7_file);
+    goto finish;
+  }
+
+  printf("welcome to pep/7 simulator\n");
   pep7_init();
 
-#if 0	//instruction register debug
-  /* Unit test ok */
-  //int tmp=0x080201;	//LOAD
-  //int tmp=0x090003;	//LOAD
-  //int tmp=0x100012;	//STORE
-  //int tmp=0x110011;	//STORE
-  //int tmp=0x180123;	//ADD
-  //int tmp=0x190010;	//ADD
-  //int tmp=0x200123;	//SUB
-  //int tmp=0x210010;	//SUB
-  //int tmp=0xD90005;	//CHAR_IN:pass to 5th pep7 memory byte(*operand) from stdin
-  //int tmp=0xE10005;	//CHAR_OUT:pass 5th pep7 memory byte(*operand) to stdout
-  //int tmp=0xE00048;	//CHAR_OUT:pass operand to stdout
-  
-  memcpy(pep7_ir, &tmp, INST_REG_SIZE);
+  while(flag){
+#if 0
+/*	pep7 main loop, open the instruction file and analysis it until the "00ZZ"
+**	file should be hex string format:
+**	E00048E00065E0006CE0006CE0006F00ZZ
+*/
+    memset(buffer, 0 , sizeof(buffer));
+    fread( buffer, INST_SPEC_SIZE*2, 1, prog_fp);
 
-  //the instruction handler.
-  excuteInst(pep7_ir);
+    /*	
+    **	if it is NOT equal "00", it should be a vailid insturction register
+    **  then get the operation specifier
+     */
+    if(!strncmp(buffer, "00" , INST_SPEC_SIZE*2)){
+      //printf("buffer = %s\n", buffer);
+      flag = 0;
+      continue;
+    }
 
-  //free(x);
+    //instruction specifier 
+    pep7_ir->is.inst_s = strtol(buffer, NULL, 16);
+
+    //get instruction operation specifer
+    memset(buffer, 0 , sizeof(buffer));
+    fread( buffer, OPER_SPEC_SIZE*2, 1, prog_fp);
+    pep7_ir->op.inst_operand = strtol(buffer, NULL, 16);
+
+    //dumpIntsRegInfo(pep7_ir);
+    excuteInst(pep7_ir);
+#else
+/*	pep7 main loop, open the instruction file and analysis it until the "00ZZ"
+**	the file is hex string file, and each instruction register should be this format: is(1 byte) op(2 byte)
+**	such as:
+**	E0 00 48 E0 00 65 E0 00 6C E0 00 6C E0 00 6F 00 ZZ
+**	^^ ^^^^^
+**	is operantion
+*/
+    memset(buff_is, 0 , sizeof(buff_is));
+    fscanf(prog_fp, "%s", buff_is);
+    //printf("buff_is = %s\n", buff_is);
+
+    /*	
+    **	if it is NOT equal "00", it should be a vailid insturction register
+    **  then get the operation specifier
+     */
+    if(!strncmp(buff_is, "00" , INST_SPEC_SIZE*2)){
+      //printf("buffer = %s\n", buffer);
+      flag = 0;
+      continue;
+    }
+
+    //instruction specifier 
+    pep7_ir->is.inst_s = strtol(buff_is, NULL, 16);
+
+    memset(buff_ip, 0 , sizeof(buff_ip));
+    fscanf(prog_fp, "%s", buff_ip);
+    fscanf(prog_fp, "%s", &buff_ip[2]);
+    //printf("buff_ip = %s\n", buff_ip);
+
+    pep7_ir->op.inst_operand = strtol(buff_ip, NULL, 16);
+    excuteInst(pep7_ir);
 #endif
+  }
 
-#if 0	//pep7 register debug
-  setReg(REG_X, -10);
-  dumpRegInfo();
-  setReg(REG_A, 12);
-  dumpRegInfo();
-  setReg(REG_A, 0);
-  dumpRegInfo();
+finish:
+  if(pep7_file)
+    free(pep7_file);
 
-  setReg(REG_X, 123);
-  dumpRegInfo();
-  setReg(REG_A, -44);
-  dumpRegInfo();
-  setReg(REG_X, 0);
-  dumpRegInfo();
-#endif
+  if(prog_fp != NULL)
+    fclose(prog_fp);
 
   pep7_shutdown();
   return;	
